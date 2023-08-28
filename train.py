@@ -14,7 +14,7 @@ Date: August 2nd, 2023
 
 #%% importing packages
 
-import os
+import keras
 import params
 import helpers
 import dataloader
@@ -29,13 +29,13 @@ from tensorflow.keras import optimizers
 
 #%%
 
-path                       = params.path
-savePath                   = path + 'savedFiles/'
-
 # MODEL PARAMETERS
+data_format                = params.data_format
 MODELTYPE                  = params.MODELTYPE
 BACKBONE                   = params.BACKBONE
+imageSize                  = params.imageSize
 input_shape                = params.input_shape
+closing                    = params.closing
 lossfunc                   = params.lossfunc
 batchsize                  = params.batchsize
 numepochs                  = params.numepochs
@@ -43,20 +43,14 @@ start_lr                   = params.start_lr
 loadweights                = params.loadweights
 num_folds                  = params.num_folds
 threshArray                = params.threshArray
-doSave                     = params.doSave
 verbose                    = params.verbose
 
 # CALLBACKS PARAMETERS
-# early stopping
-earlystop_monitor          = params.earlystop_monitor
 earlystop_patience_epoch   = params.earlystop_patience_epoch
-# reduce learning rate on plateau
-reducelronplateau_monitor  = params.reducelronplateau_monitor
 reducelronplateau_factor   = params.reducelronplateau_factor
 reducelronplateau_patience = params.reducelronplateau_patience
 reducelronplateau_minlr    = params.reducelronplateau_minlr
-# model checkpoint
-checkpoint_savepath        = savePath + MODELTYPE + '_' + BACKBONE
+checkpoint_savepath        = params.path + MODELTYPE + '_'+BACKBONE
 checkpoint_savebest        = params.checkpoint_savebest
 checkpoint_saveweights     = params.checkpoint_saveweights
 
@@ -74,18 +68,16 @@ dices_test2        = np.zeros([num_folds, threshLen])
 
 #%% dataloading
 
-# directories of datasets 1 (containing COVID-19 and normal cases) and 2 (containing only COVID-19 cases)
-ctPath_covid1    = path + 'Data/SAMPLE/Naghibi/COVID_CT/'
-labelPath_covid1 = path + 'Data/SAMPLE/Naghibi/COVID_LABEL/'
-ctPath_normal1   = path + 'Data/SAMPLE/Naghibi/NORMAL_CT/'
+path             = params.path
 
-ctPath_covid2    = path + 'Data/SAMPLE/Zorpeykar/COVID_CT/'
-labelPath_covid2 = path + 'Data/SAMPLE/Zorpeykar/COVID_LABEL/'
+covid1Path       = path+'Final_nii_SAMPLE/E/COVID/'
+normal1Path      = path+'Final_nii_SAMPLE/E/NORMAL/'
+covid2Path       = path+'Final_nii_SAMPLE/T/COVID/'
 
 # read data
-Xcovid1 , ycovid1  = dataloader.covidLoader(ctPath_covid1, labelPath_covid1)
-Xnormal1, ynormal1 = dataloader.normalLoader(ctPath_normal1)
-Xcovid2 , ycovid2  = dataloader.covidLoader(ctPath_covid2, labelPath_covid2)
+Xcovid1 , ycovid1  = dataloader.covidLoader(covid1Path, imageSize, closing)
+Xcovid2 , ycovid2  = dataloader.covidLoader(covid2Path, imageSize, closing)
+Xnormal1, ynormal1 = dataloader.normalLoader(normal1Path)
 
 #%% k-Fold cross-validation
 
@@ -93,21 +85,19 @@ covid_train, covid_test, normal_train, normal_test = helpers.get_split_indices(X
 
 #%% training
 
-os.makedirs(savePath, exist_ok=True)
-os.makedirs(savePath+MODELTYPE+'_'+BACKBONE, exist_ok=True)
-
 for i in range(num_folds):
     
-    X_train, X_valid, X_test1, y_train, y_valid, y_test1 = helpers.processDataMain(i, Xcovid1, ycovid1, 
-                                                                              Xnormal1, ynormal1, 
-                                                                              covid_train, covid_test,
-                                                                              normal_train, normal_test)
+    X_train, X_valid, X_test1, y_train, y_valid, y_test1 = helpers.processDataMain(i, data_format, 
+                                                                                   Xcovid1, ycovid1, 
+                                                                                   Xnormal1, ynormal1,
+                                                                                   covid_train, covid_test,
+                                                                                   normal_train, normal_test)
     
-    X_test2, y_test2 = helpers.processDataTest(Xcovid2, ycovid2, X_train)
+    X_test2, y_test2 = helpers.processDataTest(data_format, Xcovid2, ycovid2, X_train)
     
     # define model
     if MODELTYPE == 'UNET':
-        model = sm.Unet(BACKBONE, encoder_weights=loadweights, input_shape=input_shape)
+        model = sm.Unet(BACKBONE, encoder_weights=loadweights, input_shape=(256, 256, 1))
     elif MODELTYPE == 'LINKNET':
         model = sm.Linknet(BACKBONE, encoder_weights=loadweights, input_shape=input_shape)
 
@@ -120,11 +110,8 @@ for i in range(num_folds):
     )
     
     callbacks = [
-        EarlyStopping(monitor=earlystop_monitor,
-                      patience=earlystop_patience_epoch, 
-                      verbose=verbose),
-        ReduceLROnPlateau(monitor=reducelronplateau_monitor,
-                          factor=reducelronplateau_factor, 
+        EarlyStopping(patience=earlystop_patience_epoch, verbose=verbose),
+        ReduceLROnPlateau(factor=reducelronplateau_factor, 
                           patience=reducelronplateau_patience,
                           min_lr=reducelronplateau_minlr, 
                           verbose=verbose),
@@ -135,12 +122,22 @@ for i in range(num_folds):
     # fit model
     # if you use data generator use model.fit_generator(...) instead of model.fit(...)
     # more about `fit_generator` here: https://keras.io/models/sequential/#fit_generator
-    
+
     results = model.fit(x=X_train, y=y_train, batch_size=batchsize, epochs=numepochs,
                         validation_data=(X_valid, y_valid), callbacks=callbacks)
 
     # Visualization
-    helpers.historyPlot(results, checkpoint_savepath, i, doSave)
+    
+    plt.figure(figsize=(8, 8))
+    plt.title("Learning curve")
+    plt.plot(results.history["loss"], label="loss")
+    plt.plot(results.history["val_loss"], label="val_loss")
+    plt.plot(np.argmin(results.history["val_loss"]), np.min(results.history["val_loss"]), marker="x", color="r", label="best model")
+    plt.xlabel("Epochs")
+    plt.ylabel("log_loss")
+    plt.legend()
+    plt.savefig(checkpoint_savepath+'/fold_%d.jpg' %(i+1), quality=90)
+    plt.show()
     
     # load the best model
     model.load_weights(checkpoint_savepath+'/fold%d.h5' %(i+1))
@@ -150,7 +147,7 @@ for i in range(num_folds):
     # Evaluate on test set
     scores_load_test1[i] = model.evaluate(X_test1, y_test1, batch_size=batchsize, verbose=verbose)[0]
     # Evaluate on zorpeykar set
-    scores_load_test2[i] = model.evaluate(X_test2, y_test2, batch_size=batchsize, verbose=verbose)[0]
+    scores_load_test2[i] = model.evaluate(X_test2, y_test2, batch_szie=batchsize, verbose=verbose)[0]
 
     # Predict on validation and test and zorpeykar
     preds_val   = model.predict(X_valid, batch_size=batchsize, verbose=verbose)

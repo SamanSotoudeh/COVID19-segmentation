@@ -6,7 +6,6 @@ This code consists of helper functions.
 
 import numpy as np
 import keras.backend as K
-import matplotlib.pyplot as plt
 
 from sklearn.model_selection import KFold
 from sklearn.model_selection import train_test_split
@@ -87,7 +86,7 @@ def get_split_indices(Xcovid1, Xnormal1, num_folds):
 
 #%%
 
-def processDataMain(i, Xcovid1, ycovid1, Xnormal1, ynormal1, covid_train, covid_test, normal_train, normal_test):
+def processDataMain(i, data_format, Xcovid1, ycovid1, Xnormal1, ynormal1, covid_train, covid_test, normal_train, normal_test):
 
     X_train_covid = list(Xcovid1[i] for i in covid_train[i])
     y_train_covid = list(ycovid1[i] for i in covid_train[i])
@@ -117,14 +116,14 @@ def processDataMain(i, Xcovid1, ycovid1, Xnormal1, ynormal1, covid_train, covid_
     y_test  = y_test_covid +  y_test_normal
     
     # Stack X
-    X_train = np.vstack(X_train)
-    X_valid = np.vstack(X_valid)
-    X_test1 = np.vstack(X_test)
+    X_train = np.dstack(X_train)
+    X_valid = np.dstack(X_valid)
+    X_test1 = np.dstack(X_test)
     
     # Stack Y
-    y_train = np.vstack(y_train)
-    y_valid = np.vstack(y_valid)
-    y_test1 = np.vstack(y_test)
+    y_train = np.dstack(y_train)
+    y_valid = np.dstack(y_valid)
+    y_test1 = np.dstack(y_test)
 
     # Expand Y Dimensions
     y_train = np.expand_dims(y_train, axis =3)
@@ -138,56 +137,54 @@ def processDataMain(i, Xcovid1, ycovid1, Xnormal1, ynormal1, covid_train, covid_
     
     # PREPROCESSING
     scaler          = MinMaxScaler()
-    X_train_scaled  = scaler.fit_transform(X_train.reshape(-1, X_train.shape[-1])).reshape(X_train.shape)
-    X_valid_scaled  = scaler.transform(X_valid.reshape(-1, X_valid.shape[-1])).reshape(X_valid.shape)
-    X_test1_scaled  = scaler.transform(X_test1.reshape(-1, X_test1.shape[-1])).reshape(X_test1.shape)
+    X_train_scaled  = scaler.fit_transform(X_train.reshape(-1,1)).reshape(X_train.shape)
+    X_valid_scaled  = scaler.transform(X_valid.reshape(-1,1)).reshape(X_valid.shape)
+    X_test1_scaled  = scaler.transform(X_test1.reshape(-1,1)).reshape(X_test1.shape)
 
     # SHUFFLE            
-    train_num = np.random.rand(X_train_scaled.shape[0]).argsort()        
-    valid_num = np.random.rand(X_valid_scaled.shape[0]).argsort()        
-    test1_num = np.random.rand(X_test1_scaled.shape[0]).argsort()        
+    train_num = np.random.rand(X_train_scaled.shape[2]).argsort()        
+    valid_num = np.random.rand(X_valid_scaled.shape[2]).argsort()        
+    test1_num = np.random.rand(X_test1_scaled.shape[2]).argsort()        
 
-    X_train = np.take(X_train_scaled, train_num, axis=0, out=X_train_scaled)
-    X_valid = np.take(X_valid_scaled, valid_num, axis=0, out=X_valid_scaled)
-    X_test1 = np.take(X_test1_scaled, test1_num , axis=0, out=X_test1_scaled)
+    X_train = np.take(X_train_scaled, train_num, axis=2, out=X_train_scaled)
+    X_valid = np.take(X_valid_scaled, valid_num, axis=2, out=X_valid_scaled)
+    X_test1 = np.take(X_test1_scaled, test1_num, axis=2, out=X_test1_scaled)
     
-    y_train = np.take(y_train, train_num, axis=0, out=y_train)
-    y_valid = np.take(y_valid, valid_num, axis=0, out=y_valid)
-    y_test1 = np.take(y_test1, test1_num, axis=0, out=y_test1)
+    y_train = np.take(y_train, train_num, axis=2, out=y_train)
+    y_valid = np.take(y_valid, valid_num, axis=2, out=y_valid)
+    y_test1 = np.take(y_test1, test1_num, axis=2, out=y_test1)
 
+    if data_format == 'channels_first':
+        X_train = np.swapaxes(X_train, 2, 0)
+        y_train = np.swapaxes(y_train, 2, 0)
+        X_valid = np.swapaxes(X_valid, 2, 0)
+        y_valid = np.swapaxes(y_valid, 2, 0)
+        X_test1 = np.swapaxes(X_test1, 2, 0)
+        y_test1 = np.swapaxes(y_test1, 2, 0)
+        
     return X_train, X_valid, X_test1, y_train, y_valid, y_test1
 
 #%%
 
-def processDataTest(Xcovid2, ycovid2, X_train):
+def processDataTest(data_format, Xcovid2, ycovid2, X_train):
 
-    X_test2 = np.vstack(Xcovid2)
-    y_test2 = np.vstack(ycovid2)
+    X_test2 = np.dstack(Xcovid2)
+    y_test2 = np.dstack(ycovid2)
     y_test2 = np.expand_dims(y_test2, axis=3)
     y_test2[y_test2 > 0] = 1
     
     scaler         = MinMaxScaler()
-    X_train_scaled = scaler.fit_transform(X_train.reshape(-1, X_train.shape[-1])).reshape(X_train.shape)
-    X_test2_scaled = scaler.transform(X_test2.reshape(-1, X_test2.shape[-1])).reshape(X_test2.shape)
+    X_train_scaled = scaler.fit_transform(X_train.reshape(-1, 1)).reshape(X_train.shape)
+    X_test2_scaled = scaler.transform(X_test2.reshape(-1, 1)).reshape(X_test2.shape)
     
     test2_num = np.random.rand(X_test2_scaled.shape[0]).argsort()
     X_test2 = np.take(X_test2_scaled, test2_num , axis=0, out=X_test2_scaled)
     y_test2 = np.take(y_test2, test2_num, axis=0, out=y_test2)
     
+    if data_format == 'channels_first':
+        X_test2 = np.swapaxes(X_test2, 2, 0)
+        y_test2 = np.swapaxes(y_test2, 2, 0)
+    
     return X_test2, y_test2
 
-#%%
-
-def historyPlot(results, checkpoint_savepath, i, doSave):
-
-    plt.figure(figsize=(8, 8))
-    plt.title("Learning curve")
-    plt.plot(results.history["loss"], label="loss")
-    plt.plot(results.history["val_loss"], label="val_loss")
-    plt.plot(np.argmin(results.history["val_loss"]), np.min(results.history["val_loss"]), marker="x", color="r", label="best model")
-    plt.xlabel("Epochs")
-    plt.ylabel("log_loss")
-    plt.legend()
-    if doSave:
-        plt.savefig(checkpoint_savepath+'/fold_%d.jpg' %(i+1), quality=90)
-    plt.show()
+    
