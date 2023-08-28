@@ -147,7 +147,7 @@ for i in range(num_folds):
     # Evaluate on test set
     scores_load_test1[i] = model.evaluate(X_test1, y_test1, batch_size=batchsize, verbose=verbose)[0]
     # Evaluate on zorpeykar set
-    scores_load_test2[i] = model.evaluate(X_test2, y_test2, batch_szie=batchsize, verbose=verbose)[0]
+    scores_load_test2[i] = model.evaluate(X_test2, y_test2, batch_size=batchsize, verbose=verbose)[0]
 
     # Predict on validation and test and zorpeykar
     preds_val   = model.predict(X_valid, batch_size=batchsize, verbose=verbose)
